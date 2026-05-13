@@ -1,0 +1,104 @@
+version: "3.8"
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${DB_USER:-emf}:${DB_PASS:-emfpass}@db:5432/${DB_NAME:-emfdb}
+      SYNC_DATABASE_URL: postgresql://${DB_USER:-emf}:${DB_PASS:-emfpass}@db:5432/${DB_NAME:-emfdb}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      CAPTURES_DIR: /app/captures
+    volumes:
+      - captures:/app/captures
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    privileged: true
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./backend
+    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=2
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${DB_USER:-emf}:${DB_PASS:-emfpass}@db:5432/${DB_NAME:-emfdb}
+      SYNC_DATABASE_URL: postgresql://${DB_USER:-emf}:${DB_PASS:-emfpass}@db:5432/${DB_NAME:-emfdb}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      CAPTURES_DIR: /app/captures
+    volumes:
+      - captures:/app/captures
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    privileged: true
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  beat:
+    build:
+      context: ./backend
+    command: celery -A tasks.celery_app beat --loglevel=info --scheduler celery.beat:PersistentScheduler
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${DB_USER:-emf}:${DB_PASS:-emfpass}@db:5432/${DB_NAME:-emfdb}
+      SYNC_DATABASE_URL: postgresql://${DB_USER:-emf}:${DB_PASS:-emfpass}@db:5432/${DB_NAME:-emfdb}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  db:
+    image: timescale/timescaledb:latest-pg15
+    environment:
+      POSTGRES_USER: ${DB_USER:-emf}
+      POSTGRES_PASSWORD: ${DB_PASS:-emfpass}
+      POSTGRES_DB: ${DB_NAME:-emfdb}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-emf} -d ${DB_NAME:-emfdb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  captures:
