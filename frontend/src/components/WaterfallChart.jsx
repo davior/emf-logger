@@ -23,7 +23,7 @@ const MAX_ROWS = 300;
  *   clear()              – reset the buffer
  */
 const WaterfallChart = forwardRef(function WaterfallChart(
-  { readings, minDb = -120, maxDb = -30 },
+  { readings, minDb = -120, maxDb = -30, height = "300px" },
   ref
 ) {
   const canvasRef = useRef(null);
@@ -89,9 +89,12 @@ const WaterfallChart = forwardRef(function WaterfallChart(
   }
 
   return (
-    <div className="overflow-auto rounded bg-black">
+    <div
+      className="rounded bg-black overflow-y-auto overflow-x-hidden"
+      style={{ height, minHeight: "120px" }}
+    >
       {rowBuf.current.length === 0 && (
-        <div className="flex items-center justify-center h-40 text-gray-500 text-sm">
+        <div className="flex items-center justify-center h-full text-gray-500 text-sm">
           Waiting for spectrum data…
         </div>
       )}

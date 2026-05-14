@@ -133,6 +133,7 @@ export default function HistoricalViewer() {
               readings={readings}
               minDb={minDb}
               maxDb={maxDb}
+              height="400px"
             />
           </div>
 

@@ -2,18 +2,32 @@ import { useEffect, useRef, useState } from "react";
 import WaterfallChart from "./WaterfallChart";
 import SpectrumChart from "./SpectrumChart";
 
+// Combine an array of sub-band readings (sorted by hz_low) into a single
+// full-range reading that covers the complete sweep.
+function assembleSweep(slices) {
+  if (!slices.length) return null;
+  const sorted = [...slices].sort((a, b) => a.hz_low - b.hz_low);
+  return {
+    time: sorted[0].time,
+    hz_low: sorted[0].hz_low,
+    hz_high: sorted[sorted.length - 1].hz_high,
+    hz_step: sorted[0].hz_step,
+    db_values: sorted.flatMap((r) => r.db_values),
+  };
+}
+
 export default function LiveView({ jobId }) {
   const waterfallRef = useRef(null);
-  const [latestReading, setLatestReading] = useState(null);
+  const [latestSweep, setLatestSweep] = useState(null);
   const [connected, setConnected] = useState(false);
-  const wsRef = useRef(null);
+  // Buffer of sub-band slices accumulating for the current sweep pass
+  const sweepBuf = useRef([]);
 
   useEffect(() => {
     if (!jobId) return;
 
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${protocol}://${window.location.host}/ws/jobs/${jobId}`);
-    wsRef.current = ws;
 
     ws.onopen = () => setConnected(true);
     ws.onclose = () => setConnected(false);
@@ -22,8 +36,22 @@ export default function LiveView({ jobId }) {
     ws.onmessage = (evt) => {
       try {
         const reading = JSON.parse(evt.data);
-        setLatestReading(reading);
-        waterfallRef.current?.pushReading(reading);
+        const buf = sweepBuf.current;
+
+        // Detect sweep boundary: hz_low going backwards means rtl_power has
+        // wrapped around to the start of a new sweep pass.
+        const lastSlice = buf[buf.length - 1];
+        if (lastSlice && reading.hz_low <= lastSlice.hz_low) {
+          // Previous sweep is complete — assemble and display it
+          const assembled = assembleSweep(buf);
+          if (assembled) {
+            setLatestSweep(assembled);
+            waterfallRef.current?.pushReading(assembled);
+          }
+          sweepBuf.current = [reading];
+        } else {
+          sweepBuf.current = [...buf, reading];
+        }
       } catch {
         // ignore malformed frames
       }
@@ -31,6 +59,7 @@ export default function LiveView({ jobId }) {
 
     return () => {
       ws.close();
+      sweepBuf.current = [];
       setConnected(false);
     };
   }, [jobId]);
@@ -44,11 +73,11 @@ export default function LiveView({ jobId }) {
         <span className={connected ? "text-green-400" : "text-gray-500"}>
           {connected ? "Live" : "Disconnected"}
         </span>
-        {latestReading && (
+        {latestSweep && (
           <span className="text-gray-400 ml-2">
-            {(latestReading.hz_low / 1e6).toFixed(3)} –{" "}
-            {(latestReading.hz_high / 1e6).toFixed(3)} MHz ·{" "}
-            {latestReading.time}
+            {(latestSweep.hz_low / 1e6).toFixed(3)} –{" "}
+            {(latestSweep.hz_high / 1e6).toFixed(3)} MHz ·{" "}
+            {latestSweep.time}
           </span>
         )}
       </div>
@@ -60,7 +89,7 @@ export default function LiveView({ jobId }) {
 
       <div className="card">
         <p className="text-xs text-gray-500 mb-2">Latest sweep</p>
-        <SpectrumChart reading={latestReading} />
+        <SpectrumChart reading={latestSweep} />
       </div>
     </div>
   );

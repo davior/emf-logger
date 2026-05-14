@@ -14,7 +14,7 @@ async def detect_devices() -> List[RTLDeviceInfo]:
             stderr=asyncio.subprocess.PIPE,
         )
         _, stderr = await asyncio.wait_for(proc.communicate(), timeout=6.0)
-        output = stderr.decode()
+        output = stderr.decode(errors="replace")
 
         for line in output.splitlines():
             stripped = line.strip()
@@ -32,11 +32,11 @@ async def detect_devices() -> List[RTLDeviceInfo]:
                     )
                 except (ValueError, IndexError):
                     pass
-    except (FileNotFoundError, asyncio.TimeoutError):
+    except Exception:
         pass
 
     if not devices:
-        # Fallback: check if rtl_power is installed at all
+        # Fallback: check if rtl_power binary exists
         try:
             proc = await asyncio.create_subprocess_exec(
                 "rtl_power", "--help",
@@ -45,13 +45,13 @@ async def detect_devices() -> List[RTLDeviceInfo]:
             )
             await asyncio.wait_for(proc.communicate(), timeout=3.0)
             devices.append(
-                RTLDeviceInfo(index=0, name="RTL-SDR (default)", serial="", available=True)
+                RTLDeviceInfo(index=0, name="RTL-SDR (no device detected)", serial="", available=True)
             )
-        except (FileNotFoundError, asyncio.TimeoutError):
+        except Exception:
             devices.append(
                 RTLDeviceInfo(
                     index=0,
-                    name="RTL-SDR (simulated — rtl-sdr tools not found)",
+                    name="RTL-SDR (rtl-sdr tools not found in container)",
                     serial="SIM001",
                     available=False,
                 )
