@@ -47,6 +47,7 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       CAPTURES_DIR: /app/captures
+      C_FORCE_ROOT: "1"
     volumes:
       - captures:/app/captures
     devices:
@@ -70,6 +71,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/1
+      C_FORCE_ROOT: "1"
     depends_on:
       - redis
     restart: unless-stopped
